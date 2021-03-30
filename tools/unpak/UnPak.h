@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2019 Arx Libertatis Team (see the AUTHORS file)
+ * Copyright 2020 Arx Libertatis Team (see the AUTHORS file)
  *
  * This file is part of Arx Libertatis.
  *
@@ -17,27 +17,15 @@
  * along with Arx Libertatis.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ARX_GRAPHICS_OPENGL_GLDEBUG_H
-#define ARX_GRAPHICS_OPENGL_GLDEBUG_H
+#ifndef ARX_TOOLS_UNPAK_UNPAK_H
+#define ARX_TOOLS_UNPAK_UNPAK_H
 
-namespace gldebug {
+#include "platform/WindowsMain.h"
 
-enum Mode {
-	Enabled, //!< Check and log errors
-	Ignored, //!< Check errors but don't log (OpenGL default)
-	NoError, //!< Treat errors as undefined behavior (falls back to Ignored if not supported)
-	Default  //!< Select mode according to build type and enabled features
-};
+#ifdef ARXTOOL
+int arxunpak_main(int argc, char ** argv);
+#else
+#define arxunpak_main utf8_main
+#endif
 
-//! Initialize OpenGL debug output.
-void initialize();
-
-//! Check if debug output should be enabled.
-Mode mode();
-
-//! Must be called at the end of each frame
-void endFrame();
-
-} // namespace gldebug
-
-#endif // ARX_GRAPHICS_OPENGL_GLDEBUG_H
+#endif // ARX_TOOLS_UNPAK_UNPAK_H

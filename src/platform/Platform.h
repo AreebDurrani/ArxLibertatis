@@ -22,6 +22,7 @@
 
 #include <stddef.h>
 #include <cstdlib>
+#include <cstring>
 
 #include "platform/PlatformConfig.h"
 
@@ -451,5 +452,26 @@ namespace ARX_ANONYMOUS_NAMESPACE {
 #else
 #define arx_final
 #endif
+
+/*!
+ * Helper to cast a void * that is really a function pointer back to a function pointer
+ */
+class FunctionPointer {
+	void * m_func;
+public:
+	explicit FunctionPointer(void * func) : m_func(func) { }
+	template <typename FunctionType>
+	operator FunctionType() {
+		#if __cplusplus < 201402L && defined(__GNUC__)
+		// ignore warning: ISO C++ forbids casting between pointer-to-function and pointer-to-object
+		FunctionType funcptr;
+		ARX_STATIC_ASSERT(sizeof(funcptr) == sizeof(m_func), "pointer size mismatch");
+		std::memcpy(&funcptr, &m_func, sizeof(funcptr));
+		return funcptr;
+		#else
+		return reinterpret_cast<FunctionType>(reinterpret_cast<void(*)()>(m_func));
+		#endif
+	}
+};
 
 #endif // ARX_PLATFORM_PLATFORM_H

@@ -29,6 +29,8 @@
 #include <signal.h>
 #endif
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "platform/Platform.h"
 
 #if ARX_PLATFORM == ARX_PLATFORM_WIN32
@@ -304,14 +306,48 @@ int SDL2Window::createWindowAndGLContext(const char * profile) {
 		}
 		
 		// Verify that we actually got an accelerated context
-		(void)glGetError(); // clear error flags
 		GLint texunits = 0;
-		glGetIntegerv(GL_MAX_TEXTURE_UNITS, &texunits);
-		if(glGetError() != GL_NO_ERROR || texunits < m_minTextureUnits) {
+		// TODO libepoxy does not support unloading the GL so do things manually here
+		typedef GLenum (GLAPIENTRY * glGetError_t)();
+		glGetError_t glGetError_p = FunctionPointer(SDL_GL_GetProcAddress("glGetError"));
+		typedef void (GLAPIENTRY * glGetIntegerv_t)(GLenum pname, GLint * params);
+		glGetIntegerv_t glGetIntegerv_p = FunctionPointer(SDL_GL_GetProcAddress("glGetIntegerv"));
+		if(glGetError_p && glGetIntegerv_p) {
+			(void)glGetError_p(); // clear error flags
+			glGetIntegerv_p(GL_MAX_TEXTURE_UNITS, &texunits);
+			if(glGetError_p() != GL_NO_ERROR) {
+				texunits = 0;
+			}
+		}
+		if(texunits < m_minTextureUnits) {
 			if(lastTry) {
-				m_renderer->initialize(); // Log hardware information
-				LogError << "Not enough " << profile << " texture units available: have " << texunits
+				typedef const GLubyte * (GLAPIENTRY * glGetString_t)(GLenum name);
+				glGetString_t glGetString_p = FunctionPointer(SDL_GL_GetProcAddress("glGetString"));
+				const char * glVendor = NULL;
+				const char * glRenderer = NULL;
+				const char * glVersion = NULL;
+				if(glGetString_p) {
+					glVendor = reinterpret_cast<const char *>(glGetString_p(GL_VENDOR));
+					glRenderer = reinterpret_cast<const char *>(glGetString_p(GL_RENDERER));
+					glVersion = reinterpret_cast<const char *>(glGetString_p(GL_VERSION));
+				}
+				if(!glVendor) {
+					glVendor = "(unknown)";
+				}
+				if(!glRenderer) {
+					glRenderer = "(unknown)";
+				}
+				const char * prefix = "OpenGL ";
+				if(!glVersion) {
+					glVersion = "(unknown)";
+				} else if(boost::starts_with(glVersion, prefix)) {
+					glVersion += std::strlen(prefix);
+				}
+				LogError << "Ignoring " << profile << " context version " << glVersion
+				         << " - not enough texture units available: have " << texunits
 				         << ", need at least " << m_minTextureUnits;
+				LogError << " ├─ Vendor: " << glVendor;
+				LogError << " └─ Device: " << glRenderer;
 				return 0;
 			}
 			continue;
@@ -340,25 +376,28 @@ bool SDL2Window::initialize() {
 	
 	bool autoRenderer = (config.video.renderer == "auto");
 	
+	gldebug::Mode debugMode = gldebug::mode();
+	
 	int samples = 0;
 	for(int api = 0; api < 2 && samples == 0; api++) {
 		bool first = (api == 0);
 		
 		bool matched = false;
 		
-		for(int type = 0; type < (gldebug::isEnabled() ? 1 : 2) && samples == 0; type++) {
+		if(samples == 0 && first == (autoRenderer || config.video.renderer == "OpenGL")) {
+			matched = true;
 			
-			int flags = 0;
-			if(gldebug::isEnabled() && type == 0) {
-				flags |= SDL_GL_CONTEXT_DEBUG_FLAG;
-			}
-			SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, flags);
-			
-			if(samples == 0 && first == (autoRenderer || config.video.renderer == "OpenGL")) {
-				matched = true;
+			for(int type = 0; type < ((debugMode == gldebug::Enabled) ? 2 : 1) && samples == 0; type++) {
+				
+				int flags = 0;
+				if(debugMode == gldebug::Enabled && type == 0) {
+					flags |= SDL_GL_CONTEXT_DEBUG_FLAG;
+				}
+				SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, flags);
+				
 				// TODO core profile are not supported yet
 				#if SDL_VERSION_ATLEAST(2, 0, 6)
-				if(!gldebug::isEnabled()) {
+				if(debugMode == gldebug::NoError) {
 					// Set SDL_GL_CONTEXT_PROFILE_MASK to != 0 so SDL won't ignore SDL_GL_CONTEXT_NO_ERROR
 					SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 					SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
@@ -377,21 +416,34 @@ bool SDL2Window::initialize() {
 					#endif
 					samples = createWindowAndGLContext("Desktop OpenGL");
 				}
+				
 			}
 			
-			#if ARX_HAVE_EPOXY
-			if(samples == 0 && first == (autoRenderer || config.video.renderer == "OpenGL ES")) {
-				matched = true;
+		}
+		
+		#if ARX_HAVE_EPOXY
+		if(samples == 0 && first == (autoRenderer || config.video.renderer == "OpenGL ES")) {
+			matched = true;
+			
+			for(int type = 0; type < ((debugMode == gldebug::Enabled) ? 2 : 1) && samples == 0; type++) {
+				
+				int flags = 0;
+				if(debugMode == gldebug::Enabled && type == 0) {
+					flags |= SDL_GL_CONTEXT_DEBUG_FLAG;
+				}
+				SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, flags);
+			
 				// TODO OpenGL ES 2.0+ is not supported yet
 				SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 				SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
 				SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 				// SDL_GL_CONTEXT_NO_ERROR requires OpenGL ES 2.0
 				samples = createWindowAndGLContext("OpenGL ES");
+				
 			}
-			#endif
 			
 		}
+		#endif
 		
 		if(first && !matched) {
 			LogError << "Unknown renderer: " << config.video.renderer;

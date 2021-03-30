@@ -17,6 +17,8 @@
  * along with Arx Libertatis.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "savetool/SaveTool.h"
+
 #include <iostream>
 #include <vector>
 #include <string>
@@ -29,7 +31,6 @@
 #include "io/log/Logger.h"
 
 #include "platform/ProgramOptions.h"
-#include "platform/WindowsMain.h"
 
 #include "savetool/SaveFix.h"
 #include "savetool/SaveRename.h"
@@ -38,7 +39,7 @@
 #include "util/cmdline/CommandLine.h"
 
 static void print_help() {
-	std::cout << "usage: savetool <command> <savefile> [<options>...]\n"
+	std::cout << "Usage: arxsavetool <command> <savefile> [<options>...]\n"
 	             "commands are:\n"
 	             " - extract <savefile>\n"
 	             " - add <savefile> [<files>...]\n"
@@ -114,9 +115,9 @@ static void handlePositionalArgument(const std::string & file) {
 	g_args.push_back(file);
 }
 
-ARX_PROGRAM_OPTION_ARG("", "", "savetool arguments", &handlePositionalArgument, "ARGS")
-
-int utf8_main(int argc, char ** argv) {
+int arxsavetool_main(int argc, char ** argv) {
+	
+	ARX_PROGRAM_OPTION_ARG("", "", "savetool arguments", &handlePositionalArgument, "ARGS")
 	
 	Logger::initialize();
 	
